@@ -1,0 +1,147 @@
+# ===================================================================
+# BASE CONFIGURATION (Shared Across All Environments)
+# ===================================================================
+spring:
+  application:
+    name: Backend
+  
+  # Default active profile (Overridden by SPRING_PROFILES_ACTIVE=prod)
+  profiles:
+    active: dev
+
+# HTTP Compression (Shared across all profiles)
+server:
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain,application/javascript,text/css
+    min-response-size: 1024
+
+---
+# ===================================================================
+# LOCAL / DEVELOPMENT PROFILE
+# ===================================================================
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  # Database Configuration (Local Docker Setup)
+  datasource:
+    url: jdbc:postgresql://localhost:5432/game_time_db
+    username: gametime
+    password: secret123
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # Redis Configuration (Local)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+server:
+  port: 8081
+
+logging:
+  level:
+    com.gametime.Backend: DEBUG
+    org.springframework.web: INFO
+
+---
+# ===================================================================
+# PRODUCTION PROFILE
+# Set environment variable: SPRING_PROFILES_ACTIVE=prod
+# ===================================================================
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  # -----------------------------------------------------------------
+  # POSTGRESQL CONFIGURATION (HikariCP Connection Pool)
+  # -----------------------------------------------------------------
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://postgres-prod:5432/game_time_db}
+    username: ${DB_USERNAME:gametime}
+    password: ${DB_PASSWORD:secret123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      idle-timeout: 300000        # 5 minutes
+      max-lifetime: 1800000       # 30 minutes
+      connection-timeout: 20000   # 20 seconds
+      pool-name: QuizHikariPool
+
+  # -----------------------------------------------------------------
+  # JPA / HIBERNATE SETTINGS
+  # -----------------------------------------------------------------
+  jpa:
+    # NEVER use 'update' or 'create-drop' in production. Use Liquibase or Flyway instead.
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false # Prevents DB connection leaks during long request processing
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 50
+          order_inserts: true
+          order_updates: true
+
+  # -----------------------------------------------------------------
+  # REDIS CONFIGURATION (Caching & Leaderboards)
+  # -----------------------------------------------------------------
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX:32}
+          max-idle: 16
+          min-idle: 8
+          max-wait: 2000ms
+
+server:
+  port: ${PORT:8080}
+  # Enable HTTP/2 for low-latency WebSocket & Web traffic
+  http2:
+    enabled: true
+  # Graceful shutdown allows existing quiz WebSocket sessions to finish cleanly
+  shutdown: graceful
+
+# -------------------------------------------------------------------
+# PRODUCTION LOGGING (JSON format for Docker / Dozzle / ELK)
+# -------------------------------------------------------------------
+logging:
+  level:
+    root: WARN
+    com.gametime.Backend: INFO
+    org.springframework.web: WARN
+    org.hibernate: WARN
+
+# -------------------------------------------------------------------
+# ACTUATOR & METRICS (Production Monitoring)
+# -------------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
