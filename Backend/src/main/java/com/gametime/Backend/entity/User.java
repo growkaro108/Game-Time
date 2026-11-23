@@ -65,6 +65,10 @@ public class User {
     @Builder.Default
     private BigDecimal usdtBalance = BigDecimal.ZERO;
 
+    @Column(nullable = false, precision = 15, scale = 2, columnDefinition = "numeric(15,2) default 0.00")
+    @Builder.Default
+    private BigDecimal inrBalance = BigDecimal.ZERO;
+
     @Column(nullable = false)
     @Builder.Default
     private Long nexusTokens = 0L;

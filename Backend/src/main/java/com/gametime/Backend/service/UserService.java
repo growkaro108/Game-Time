@@ -8,15 +8,17 @@ import com.gametime.Backend.request.SignupRequest;
 import com.gametime.Backend.request.WalletRequest;
 import com.gametime.Backend.response.UserResponse;
 import lombok.RequiredArgsConstructor;
-
-import org.springframework.cache.annotation.Caching;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -24,38 +26,43 @@ import java.util.Map;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     // ── AUTH ─────────────────────────────────────────────────────────────────
 
     @Transactional
     public UserResponse signup(SignupRequest req) {
-        if (userRepository.existsByEmail(req.email())) {
+        String email = normalizeEmail(req.email());
+        if (userRepository.existsByEmail(email)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
         }
-        // NOTE: In production replace with BCryptPasswordEncoder
         User user = User.builder()
                 .name(req.name())
-                .email(req.email().toLowerCase())
-                .password(req.password()) // TODO: hash password
+                .email(email)
+                .password(passwordEncoder.encode(req.password()))
                 .build();
         return UserResponse.from(userRepository.save(user));
     }
 
+    @Transactional
     public UserResponse login(LoginRequest req) {
-        User user = userRepository.findByEmail(req.email().toLowerCase())
+        User user = userRepository.findByEmail(normalizeEmail(req.email()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
-        // TODO: verify hashed password
-        if (!user.getPassword().equals(req.password())) {
+        if (!passwordMatches(req.password(), user.getPassword())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
-        if (user.getStatus() == UserStatus.BANNED) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account banned");
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is not active");
+        }
+        if (!user.getPassword().startsWith("$2")) {
+            user.setPassword(passwordEncoder.encode(req.password()));
+            userRepository.save(user);
         }
         return UserResponse.from(user);
     }
 
     public Map<String, Boolean> checkEmail(String email) {
-        boolean available = !userRepository.existsByEmail(email.toLowerCase());
+        boolean available = !userRepository.existsByEmail(normalizeEmail(email));
         return Map.of("available", available);
     }
 
@@ -70,6 +77,14 @@ public class UserService {
 
     public UserResponse getUserById(Long id) {
         return UserResponse.from(findOrThrow(id));
+    }
+
+    public UserResponse getCurrentUser(Long id) {
+        User user = findOrThrow(id);
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is not active");
+        }
+        return UserResponse.from(user);
     }
 
     // ── ADMIN ACTIONS ────────────────────────────────────────────────────────
@@ -124,5 +139,18 @@ public class UserService {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "User not found: " + id));
+    }
+
+    private boolean passwordMatches(String rawPassword, String storedPassword) {
+        if (storedPassword.startsWith("$2")) {
+            return passwordEncoder.matches(rawPassword, storedPassword);
+        }
+        return MessageDigest.isEqual(
+                rawPassword.getBytes(StandardCharsets.UTF_8),
+                storedPassword.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 }

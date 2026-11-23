@@ -7,7 +7,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -68,6 +70,11 @@ public class Tournament {
     @ManyToMany(mappedBy = "joinedTournaments", fetch = FetchType.LAZY)
     @Builder.Default
     private Set<User> registeredUsers = new HashSet<>();
+
+    @OneToMany(mappedBy = "tournament", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id ASC")
+    @Builder.Default
+    private List<TournamentQuestion> questions = new ArrayList<>();
 
     public enum TournamentStatus { SCHEDULED, LIVE, COMPLETED, CANCELLED }
 }

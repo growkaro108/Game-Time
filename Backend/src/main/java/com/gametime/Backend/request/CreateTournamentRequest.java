@@ -1,10 +1,12 @@
 package com.gametime.Backend.request;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.Builder;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Builder
 public record CreateTournamentRequest(
@@ -34,5 +36,9 @@ public record CreateTournamentRequest(
         int questionCount,
 
         @Size(max = 500, message = "Description can be at most 500 characters")
-        String description
+        String description,
+
+        @NotNull(message = "Questions are required")
+        @Size(min = 5, max = 100, message = "A tournament must have 5 to 100 questions")
+        List<@Valid CreateQuestionRequest> questions
 ) {}
